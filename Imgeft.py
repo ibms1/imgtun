@@ -5,8 +5,14 @@ from PIL import Image as PILImage
 import tempfile
 import os
 from pathlib import Path
-import dlib
-import imutils
+
+# Try to import face_recognition, but have a fallback if it's not available
+try:
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
+except ImportError:
+    FACE_RECOGNITION_AVAILABLE = False
+    st.warning("Advanced face detection library not available. Using basic detection method.")
 
 def create_gif_from_transition(frames, output_path, duration=50):
     """Create GIF from transition frames using Pillow"""
@@ -37,30 +43,51 @@ def load_and_preprocess_image(uploaded_file):
         st.error(f"Error loading image: {str(e)}")
         return None
 
-def detect_face(image):
-    """Detect face in image using dlib"""
-    try:
-        # Load face detector
-        detector = dlib.get_frontal_face_detector()
-        
-        # Convert to grayscale for detection
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        
-        # Detect faces
-        faces = detector(gray, 1)
-        
-        # If no face found, return the center of the image
-        if len(faces) == 0:
-            height, width = image.shape[:2]
-            return (width//2, height//2, width, height)
-        
-        # Return the first face bounding box
-        face = faces[0]
-        return (face.left(), face.top(), face.width(), face.height())
-    except Exception as e:
-        st.warning(f"Face detection failed: {str(e)}. Using image center.")
+def detect_face_with_face_recognition(image):
+    """Detect face using face_recognition library (if available)"""
+    # Get face locations using face_recognition
+    face_locations = face_recognition.face_locations(image)
+    
+    # If no faces found, return center of image
+    if not face_locations:
         height, width = image.shape[:2]
         return (width//4, height//4, width//2, height//2)
+    
+    # Take the first face found
+    top, right, bottom, left = face_locations[0]
+    # Convert to x, y, w, h format
+    return (left, top, right-left, bottom-top)
+
+def detect_face_with_opencv(image):
+    """Fallback face detection using OpenCV Haar cascades"""
+    # Load the pre-trained model
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    
+    # Detect faces
+    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+    
+    # If no faces found, return center of image
+    if len(faces) == 0:
+        height, width = image.shape[:2]
+        return (width//4, height//4, width//2, height//2)
+    
+    # Return the first face found
+    x, y, w, h = faces[0]
+    return (x, y, w, h)
+
+def detect_face(image):
+    """Detect face using the best available method"""
+    if FACE_RECOGNITION_AVAILABLE:
+        try:
+            return detect_face_with_face_recognition(image)
+        except Exception as e:
+            st.warning(f"Face recognition failed: {str(e)}. Falling back to OpenCV.")
+            return detect_face_with_opencv(image)
+    else:
+        return detect_face_with_opencv(image)
 
 def align_and_crop_faces(image1, image2, target_size=(512, 512)):
     """Align and crop faces to consistent size"""
@@ -173,7 +200,7 @@ def main():
                 # Process faces if face detection is enabled
                 if face_detection:
                     try:
-                        # Use dlib for face alignment
+                        # Use face detection for alignment
                         st.info("Detecting and analyzing faces...")
                         image1_aligned, image2_aligned = align_and_crop_faces(
                             image1, image2, target_size=(target_size, target_size)

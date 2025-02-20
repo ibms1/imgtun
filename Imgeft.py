@@ -6,14 +6,6 @@ import tempfile
 import os
 from pathlib import Path
 
-# محاولة استيراد face_recognition مع وجود بديل في حالة عدم التوفر
-try:
-    import face_recognition
-    FACE_RECOGNITION_AVAILABLE = True
-except ImportError:
-    FACE_RECOGNITION_AVAILABLE = False
-    st.warning("Advanced face detection library not available. Using basic detection method.")
-
 def create_gif_from_transition(frames, output_path, duration=50):
     """إنشاء GIF من إطارات الانتقال باستخدام Pillow"""
     if not frames:
@@ -43,20 +35,7 @@ def load_and_preprocess_image(uploaded_file):
         st.error(f"Error loading image: {str(e)}")
         return None
 
-def detect_face_with_face_recognition(image):
-    """الكشف عن الوجه باستخدام مكتبة face_recognition (إذا كانت متوفرة)"""
-    face_locations = face_recognition.face_locations(image)
-    
-    # إذا لم يتم العثور على وجوه، يتم إرجاع مركز الصورة
-    if not face_locations:
-        height, width = image.shape[:2]
-        return (width//4, height//4, width//2, height//2)
-    
-    # أخذ أول وجه تم العثور عليه
-    top, right, bottom, left = face_locations[0]
-    return (left, top, right-left, bottom-top)
-
-def detect_face_with_opencv(image):
+def detect_face(image):
     """الكشف عن الوجه باستخدام OpenCV Haar cascades"""
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -68,17 +47,6 @@ def detect_face_with_opencv(image):
     
     x, y, w, h = faces[0]
     return (x, y, w, h)
-
-def detect_face(image):
-    """الكشف عن الوجه باستخدام أفضل طريقة متاحة"""
-    if FACE_RECOGNITION_AVAILABLE:
-        try:
-            return detect_face_with_face_recognition(image)
-        except Exception as e:
-            st.warning(f"Face recognition failed: {str(e)}. Falling back to OpenCV.")
-            return detect_face_with_opencv(image)
-    else:
-        return detect_face_with_opencv(image)
 
 def align_and_crop_faces(image1, image2, target_size=(512, 512)):
     """محاذاة واقتصاص الوجوه إلى حجم ثابت"""
@@ -161,7 +129,6 @@ def main():
             steps = st.slider("Number of Transition Frames", min_value=15, max_value=90, value=45, step=5)
         with col2:
             frame_duration = st.slider("Frame Duration (ms)", min_value=20, max_value=200, value=50, step=10)
-            face_detection = st.checkbox("Use Face Detection", value=True)
     
     center_col = st.columns([1, 2, 1])[1]
     with center_col:
@@ -177,27 +144,23 @@ def main():
                     st.error("Failed to load one or both images. Please check the file formats.")
                     return
                 
-                if face_detection:
-                    try:
-                        st.info("Detecting and analyzing faces...")
-                        image1_aligned, image2_aligned = align_and_crop_faces(
-                            image1, image2, target_size=(target_size, target_size)
-                        )
-                        
-                        aligned_col1, aligned_col2 = st.columns(2)
-                        with aligned_col1:
-                            st.markdown("<h4>First Face Processed</h4>", unsafe_allow_html=True)
-                            st.image(image1_aligned, use_container_width=True)
-                        with aligned_col2:
-                            st.markdown("<h4>Second Face Processed</h4>", unsafe_allow_html=True)
-                            st.image(image2_aligned, use_container_width=True)
-                        
-                        frames = create_morphing_transition(image1_aligned, image2_aligned, steps=steps)
-                    except Exception as e:
-                        st.warning(f"Encountered an issue processing faces: {str(e)}. Falling back to standard processing.")
-                        face_detection = False
-                
-                if not face_detection:
+                try:
+                    st.info("Detecting and analyzing faces...")
+                    image1_aligned, image2_aligned = align_and_crop_faces(
+                        image1, image2, target_size=(target_size, target_size)
+                    )
+                    
+                    aligned_col1, aligned_col2 = st.columns(2)
+                    with aligned_col1:
+                        st.markdown("<h4>First Face Processed</h4>", unsafe_allow_html=True)
+                        st.image(image1_aligned, use_container_width=True)
+                    with aligned_col2:
+                        st.markdown("<h4>Second Face Processed</h4>", unsafe_allow_html=True)
+                        st.image(image2_aligned, use_container_width=True)
+                    
+                    frames = create_morphing_transition(image1_aligned, image2_aligned, steps=steps)
+                except Exception as e:
+                    st.warning(f"Encountered an issue processing faces: {str(e)}. Using standard resizing.")
                     target_shape = (target_size, target_size)
                     image1_resized = cv2.resize(image1, target_shape, interpolation=cv2.INTER_LINEAR)
                     image2_resized = cv2.resize(image2, target_shape, interpolation=cv2.INTER_LINEAR)

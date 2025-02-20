@@ -1,6 +1,6 @@
-streamlit==1.32.0
-numpy==1.26.0
-opencv-python==4.8.1.78
-pillow==10.0.1
-dlib==19.24.2
-imutils==0.5.4
+streamlit
+numpy
+opencv-python
+pillow
+dlib
+imutils
